@@ -1,0 +1,15 @@
+create extension if not exists pgcrypto;
+create table if not exists public.subscribers(telegram_user_id bigint primary key,chat_id text unique not null,username text,opted_in boolean not null default true,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table if not exists public.group_targets(chat_id text primary key,title text,enabled boolean not null default true,activated_by bigint not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table if not exists public.campaign_content(id uuid primary key default gen_random_uuid(),source_chat_id text not null,source_message_id bigint not null,message_type text not null,caption text not null default '',created_by bigint not null,created_at timestamptz not null default now(),unique(source_chat_id,source_message_id));
+create table if not exists public.campaigns(id uuid primary key default gen_random_uuid(),content_id uuid not null references public.campaign_content(id),status text not null check(status in('scheduled','sending','completed','failed')) default 'scheduled',scheduled_at timestamptz not null,target_subscribers boolean not null default false,target_groups boolean not null default false,created_by bigint not null,created_at timestamptz not null default now());
+create table if not exists public.campaign_recipients(id uuid primary key default gen_random_uuid(),campaign_id uuid not null references public.campaigns(id) on delete cascade,target_type text not null check(target_type in('subscriber','group')),target_id text not null,status text not null check(status in('pending','sent','failed')) default 'pending',error_text text,sent_at timestamptz,created_at timestamptz not null default now(),unique(campaign_id,target_type,target_id));
+create index if not exists campaigns_due_idx on public.campaigns(status,scheduled_at);
+create index if not exists recipients_pending_idx on public.campaign_recipients(campaign_id,status,created_at);
+create index if not exists subscribers_opted_idx on public.subscribers(opted_in);
+create index if not exists groups_enabled_idx on public.group_targets(enabled);
+alter table public.subscribers enable row level security;
+alter table public.group_targets enable row level security;
+alter table public.campaign_content enable row level security;
+alter table public.campaigns enable row level security;
+alter table public.campaign_recipients enable row level security;
