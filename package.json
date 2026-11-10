@@ -4,5 +4,5 @@
   "private": true,
   "type": "module",
   "scripts": {"dev":"next dev","build":"next build","start":"next start","auth:qr":"node --env-file=.env.local scripts/qr-login.mjs"},
-  "dependencies": {"next":"14.2.15","qrcode-terminal":"^0.12.0","react":"^18.3.1","react-dom":"^18.3.1","teleproto":"1.232.0"}
+  "dependencies": {"@supabase/supabase-js":"^2.47.10","next":"14.2.15","qrcode-terminal":"^0.12.0","react":"^18.3.1","react-dom":"^18.3.1","teleproto":"1.232.0"}
 }
