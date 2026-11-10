@@ -13,7 +13,10 @@ export async function POST(request) {
     return json({ error: 'Введите тему длиной от 2 до 80 символов.' }, 400);
   }
   try {
-    const result = await searchPublicGroups(query, body.cursor || null);
+    const seenUsernames = Array.isArray(body.seenUsernames)
+      ? body.seenUsernames.slice(0, 1000)
+      : [];
+    const result = await searchPublicGroups(query, body.cursor || null, seenUsernames);
     return json({
       query,
       items: result.items,

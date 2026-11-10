@@ -71,7 +71,11 @@ export default function Home() {
           'content-type': 'application/json',
           'x-telegram-init-data': initData
         },
-        body: JSON.stringify({ query: trimmedQuery, cursor })
+        body: JSON.stringify({
+          query: trimmedQuery,
+          cursor,
+          seenUsernames: continuing ? items.map(item => item.username) : []
+        })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Поиск не выполнен');
@@ -82,7 +86,7 @@ export default function Home() {
         const freshItems = pageItems.filter(item => !alreadyShown.has(item.username.toLowerCase()));
         setItems(current => uniqueItems([...current, ...freshItems]));
         if (!freshItems.length && data.nextCursor) {
-          setError('На этой странице не было новых групп. Нажмите «Ещё группы», чтобы продолжить.');
+          setError('Telegram пока вернул только уже показанные группы; курсор поиска сдвинут. Нажмите «Ещё группы», чтобы продолжить.');
         } else if (!freshItems.length) {
           setError('Новых групп по этой теме больше не найдено.');
         }
