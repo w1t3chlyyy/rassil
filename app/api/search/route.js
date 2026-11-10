@@ -2,7 +2,7 @@ import { json, requireAdmin } from '../../../lib/server.js';
 import { searchPublicGroups } from '../../../lib/telegram-search.js';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 10;
+export const maxDuration = 15;
 
 export async function POST(request) {
   if (!await requireAdmin(request)) return json({ error: 'Нет доступа' }, 401);
@@ -13,14 +13,15 @@ export async function POST(request) {
     return json({ error: 'Введите тему длиной от 2 до 80 символов.' }, 400);
   }
   try {
-    const items = await searchPublicGroups(query);
+    const result = await searchPublicGroups(query, body.cursor || null);
     return json({
       query,
-      items,
-      note: 'Поиск идёт по публичным сообщениям групп. Список неполный; приватные группы без публичной ссылки не показываются.'
+      items: result.items,
+      nextCursor: result.nextCursor,
+      note: 'Поиск идёт по публичным сообщениям групп. Нажмите «Ещё группы» или повторите тот же запрос, чтобы перейти к следующей странице. Приватные группы без публичной ссылки не показываются.'
     });
   } catch (error) {
     console.error('MTProto search failed:', error?.message || error);
-    return json({ error: 'Поиск не выполнен. Проверьте MTProto session и попробуйте позже.' }, 502);
+    return json({ error: error?.message || 'Поиск не выполнен. Проверьте MTProto session и попробуйте позже.' }, 502);
   }
 }

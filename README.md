@@ -1,10 +1,20 @@
 # Telegram Public Group Finder
 
-Mini App on Next.js/Vercel plus a Telegram bot. User login for read-only discovery is MTProto (API ID + API hash + QR-generated StringSession); bot UI uses the regular Bot API. There is no sending, joining, folder creation, or campaign scheduling in this project.
+Mini App on Next.js/Vercel plus a Telegram bot. Discovery uses a user-authorized MTProto session; the bot UI uses the regular Bot API. The project searches public groups, can organize chats that the account has already joined into a Telegram folder, and can create a shareable folder link when Telegram allows it.
 
-## What search does
+The app never joins groups automatically and never sends campaign messages. The legacy campaign, content, and cron endpoints return HTTP 410; the old Supabase tables are retained but are no longer used for sending.
 
-`/search <topic>` and the Mini App call Telegram MTProto `messages.searchGlobal` with `groups_only=true`. This is a global **message** search: it finds public groups where public messages match the query, then returns up to 10 individual `https://t.me/<username>` links. It is not a semantic catalog, may be incomplete, and does not return private groups or create `t.me/addlist` folder links. The authenticated account is not asked to join any result.
+## Search behavior
+
+`/search <topic>` and the Mini App use Telegram MTProto `messages.searchGlobal` with `groups_only=true`. Each page searches up to 100 matching messages and deduplicates public groups by username, ignoring case.
+
+In the Mini App, repeat the same query or press **Ещё группы** to continue from Telegram's next-page cursor. New pages are appended without repeating groups already shown in that search session. A changed query starts a new search. Telegram's global message search is not a semantic catalog and may be incomplete.
+
+The bot command returns the first 10 results to fit Telegram message limits. Use `/panel` for paginated results and folder tools.
+
+## Telegram folders
+
+Select results and choose a folder title to create or update a folder in the signed-in Telegram account. The selected groups must already be present in the account's dialogs; join them manually in Telegram first. The app does not join groups. It also returns a shareable `t.me/addlist/...` link if Telegram successfully exports one for the folder.
 
 ## Setup
 
@@ -28,8 +38,8 @@ The webhook `secret_token` must equal `TELEGRAM_WEBHOOK_SECRET`.
 
 - `/start` or `/help` — explain use.
 - `/panel` — open the Mini App (allowlisted admin only).
-- `/search предприниматели` — search and return up to 10 public group links (allowlisted admin only).
+- `/search предприниматели` — return up to 10 public group links (allowlisted admin only).
 
 Set `ADMIN_TELEGRAM_IDS` to the Telegram numeric ID(s) authorized to search. `TELEGRAM_SESSION_STRING` grants access to the logged-in Telegram account: keep it private, store only in Vercel server-side environment settings, and revoke the session from Telegram → Settings → Devices if exposed. Consider using a dedicated account.
 
-No Supabase or cron is needed for this read-only finder. Telegram may throttle global searches; use short topical queries and avoid repeated rapid requests.
+No Supabase or cron is needed for search or folder creation. Telegram may throttle global searches; avoid repeated rapid requests.

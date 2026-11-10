@@ -1,8 +1,10 @@
-import {json,requireAdmin,supabase} from '../../../lib/server.js';
-export const dynamic='force-dynamic';
-export async function GET(req){if(!await requireAdmin(req))return json({error:'Нет доступа'},401);const {data,error}=await supabase.from('campaigns').select('id,status,scheduled_at,target_subscribers,target_groups').order('created_at',{ascending:false}).limit(30);if(error)return json({error:'Не удалось загрузить кампании'},500);const items=await Promise.all((data||[]).map(async c=>{const [{count:recipient_count},{count:sent_count}]=await Promise.all([supabase.from('campaign_recipients').select('id',{count:'exact',head:true}).eq('campaign_id',c.id),supabase.from('campaign_recipients').select('id',{count:'exact',head:true}).eq('campaign_id',c.id).eq('status','sent')]);return {...c,recipient_count:recipient_count||0,sent_count:sent_count||0};}));return json({items});}
-export async function POST(req){const admin=await requireAdmin(req);if(!admin)return json({error:'Нет доступа'},401);let b;try{b=await req.json();}catch{return json({error:'Некорректный запрос'},400);}const {contentId,scheduledAt,subscribers,groups}=b||{};if(typeof contentId!=='string'||typeof scheduledAt!=='string'||(!subscribers&&!groups))return json({error:'Проверьте материал, дату и аудиторию'},400);const when=new Date(scheduledAt);if(Number.isNaN(when.getTime())||when.getTime()<Date.now()-60000)return json({error:'Укажите корректную дату запуска'},400);const {data:content}=await supabase.from('campaign_content').select('id').eq('id',contentId).maybeSingle();if(!content)return json({error:'Материал не найден'},404);let targets=[];
- if(subscribers){const {data,error}=await supabase.from('subscribers').select('chat_id').eq('opted_in',true).limit(501);if(error)return json({error:'Не удалось загрузить подписчиков'},500);if((data||[]).length>500)return json({error:'Лимит кампании — 500 подписчиков'},400);targets.push(...(data||[]).map(x=>({target_type:'subscriber',target_id:x.chat_id})));}
- if(groups){const {data,error}=await supabase.from('group_targets').select('chat_id').eq('enabled',true).limit(51);if(error)return json({error:'Не удалось загрузить группы'},500);if((data||[]).length>50)return json({error:'Лимит кампании — 50 групп'},400);targets.push(...(data||[]).map(x=>({target_type:'group',target_id:x.chat_id})));}
- if(!targets.length)return json({error:'В выбранной аудитории нет получателей'},400);const {data:c,error:ie}=await supabase.from('campaigns').insert({content_id:contentId,status:'scheduled',scheduled_at:when.toISOString(),target_subscribers:!!subscribers,target_groups:!!groups,created_by:admin.id}).select('id').single();if(ie)return json({error:'Не удалось создать кампанию'},500);const {error:re}=await supabase.from('campaign_recipients').insert(targets.map(t=>({campaign_id:c.id,...t,status:'pending'})));if(re){await supabase.from('campaigns').delete().eq('id',c.id);return json({error:'Не удалось подготовить аудиторию'},500);}return json({ok:true,id:c.id},201);
+import { json } from '../../../lib/server.js';
+
+export const dynamic = 'force-dynamic';
+
+function disabled() {
+  return json({ error: 'Функции кампаний отключены.' }, 410);
 }
+
+export const GET = disabled;
+export const POST = disabled;

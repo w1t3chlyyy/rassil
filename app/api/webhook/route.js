@@ -18,10 +18,10 @@ export async function POST(req) {
     const query=text.slice(text.split(/\s+/)[0].length).trim();
     if(query.length<2){await say(chat,'Укажите тему: /search предприниматели');return json({ok:true});}
     try {
-      const items=await searchPublicGroups(query);
+      const {items=[]}=await searchPublicGroups(query);
       if(!items.length){await say(chat,'В глобальном поиске Telegram не нашёл публичных групп по совпадающим сообщениям. Попробуйте другой запрос.');return json({ok:true});}
-      const lines=items.map((x,i)=>`${i+1}. <b>${esc(x.title)}</b>\n<a href="${esc(x.url)}">${esc(x.url)}</a>`).join('\n\n');
-      await say(chat,`Публичные группы по запросу «${esc(query)}» (до 10 результатов):\n\n${lines}\n\nРезультаты основаны на совпадениях в публичных сообщениях и не являются полным каталогом.`,{parse_mode:'HTML',disable_web_page_preview:true});
+      const lines=items.slice(0,10).map((x,i)=>`${i+1}. <b>${esc(x.title)}</b>\n<a href="${esc(x.url)}">${esc(x.url)}</a>`).join('\n\n');
+      await say(chat,`Публичные группы по запросу «${esc(query)}» (первые ${Math.min(items.length,10)}):\n\n${lines}\n\nДля просмотра следующих страниц откройте Mini App командой /panel. Результаты основаны на совпадениях в публичных сообщениях и не являются полным каталогом.`,{parse_mode:'HTML',disable_web_page_preview:true});
     } catch(e) { console.error('search:',e?.message||e); await say(chat,'Поиск сейчас недоступен. Проверьте API ID/hash и session string на сервере.'); }
     return json({ok:true});
   }
