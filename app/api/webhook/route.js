@@ -1,11 +1,29 @@
-import {isAdmin,json,supabase,telegram} from '../../../lib/server.js';
-export const dynamic='force-dynamic';
-async function say(chat_id,text,extra={}){try{await telegram('sendMessage',{chat_id,text,...extra});}catch(e){console.error('sendMessage',e.message);}}
-async function groupAdmin(chat_id,user_id){try{const m=await telegram('getChatMember',{chat_id,user_id});return m.status==='creator'||m.status==='administrator';}catch{return false;}}
-export async function POST(req){if(!process.env.TELEGRAM_WEBHOOK_SECRET||req.headers.get('x-telegram-bot-api-secret-token')!==process.env.TELEGRAM_WEBHOOK_SECRET)return json({ok:false},401);let u;try{u=await req.json();}catch{return json({ok:true});}const m=u.message;if(!m?.chat)return json({ok:true});const chat=String(m.chat.id),uid=m.from?.id,text=(m.text||'').trim(),cmd=text.split(/\s+/)[0].split('@')[0].toLowerCase();
- if(cmd==='/start'&&m.chat.type==='private'&&uid){const {error}=await supabase.from('subscribers').upsert({telegram_user_id:uid,chat_id:chat,username:m.from.username||null,opted_in:true,updated_at:new Date().toISOString()},{onConflict:'telegram_user_id'});await say(chat,error?'Не удалось оформить подписку.':'Вы подписались. Для отказа отправьте /stop.');return json({ok:true});}
- if(cmd==='/stop'&&m.chat.type==='private'&&uid){const {error}=await supabase.from('subscribers').update({opted_in:false,updated_at:new Date().toISOString()}).eq('telegram_user_id',uid);await say(chat,error?'Не удалось изменить подписку.':'Подписка отключена. Для возобновления отправьте /start.');return json({ok:true});}
- if(cmd==='/panel'&&m.chat.type==='private'&&uid){if(!isAdmin(uid)){await say(chat,'Панель доступна только администратору.');return json({ok:true});}await say(chat,'Откройте панель управления:',{reply_markup:{inline_keyboard:[[{text:'Открыть кампании',web_app:{url:process.env.APP_URL}}]]}});return json({ok:true});}
- if((cmd==='/enable'||cmd==='/disable')&&['group','supergroup'].includes(m.chat.type)&&uid){if(!await groupAdmin(m.chat.id,uid)){await say(chat,'Эту настройку может менять только администратор группы.');return json({ok:true});}const enabled=cmd==='/enable';const {error}=await supabase.from('group_targets').upsert({chat_id:chat,title:m.chat.title||null,enabled,activated_by:uid,updated_at:new Date().toISOString()},{onConflict:'chat_id'});await say(chat,error?'Не удалось сохранить настройку.':enabled?'Группа подключена. Отключить публикации: /disable.':'Публикации отключены.');return json({ok:true});}
- if(m.chat.type==='private'&&uid&&isAdmin(uid)&&!text.startsWith('/')){const type=m.photo?'photo':m.video?'video':m.document?'document':m.animation?'animation':m.audio?'audio':m.voice?'voice':m.sticker?'sticker':'text';const caption=(m.caption||m.text||'').slice(0,1000);const {error}=await supabase.from('campaign_content').upsert({source_chat_id:chat,source_message_id:m.message_id,message_type:type,caption,created_by:uid},{onConflict:'source_chat_id,source_message_id'});await say(chat,error?'Не удалось сохранить материал.':'Материал сохранён. Настройте рассылку через /panel.');}
- return json({ok:true});}
+import { isAdmin, json, telegram } from '../../../lib/server.js';
+import { searchPublicGroups } from '../../../lib/telegram-search.js';
+export const dynamic = 'force-dynamic';
+async function say(chat_id, text, extra={}) { try { await telegram('sendMessage',{chat_id,text,...extra}); } catch(e) { console.error('sendMessage:',e.message); } }
+const esc = s => String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+export async function POST(req) {
+  if (!process.env.TELEGRAM_WEBHOOK_SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== process.env.TELEGRAM_WEBHOOK_SECRET) return json({ok:false},401);
+  let update; try { update=await req.json(); } catch { return json({ok:true}); }
+  const m=update.message; if(!m?.chat || m.chat.type!=='private' || !m.from?.id) return json({ok:true});
+  const uid=m.from.id, chat=String(m.chat.id), text=(m.text||'').trim(), cmd=text.split(/\s+/)[0].split('@')[0].toLowerCase();
+  if(cmd==='/start' || cmd==='/help') { await say(chat,'Я нахожу публичные Telegram-группы по теме и возвращаю ссылки. Используйте: /search предприниматели. Поиск доступен только администратору.'); return json({ok:true}); }
+  if(cmd==='/panel') {
+    if(!isAdmin(uid)){await say(chat,'Панель доступна только администратору.');return json({ok:true});}
+    await say(chat,'Откройте поиск групп:',{reply_markup:{inline_keyboard:[[{text:'Открыть Mini App',web_app:{url:process.env.APP_URL}}]]}});return json({ok:true});
+  }
+  if(cmd==='/search') {
+    if(!isAdmin(uid)){await say(chat,'Поиск доступен только администратору.');return json({ok:true});}
+    const query=text.slice(text.split(/\s+/)[0].length).trim();
+    if(query.length<2){await say(chat,'Укажите тему: /search предприниматели');return json({ok:true});}
+    try {
+      const items=await searchPublicGroups(query);
+      if(!items.length){await say(chat,'В глобальном поиске Telegram не нашёл публичных групп по совпадающим сообщениям. Попробуйте другой запрос.');return json({ok:true});}
+      const lines=items.map((x,i)=>`${i+1}. <b>${esc(x.title)}</b>\n<a href="${esc(x.url)}">${esc(x.url)}</a>`).join('\n\n');
+      await say(chat,`Публичные группы по запросу «${esc(query)}» (до 10 результатов):\n\n${lines}\n\nРезультаты основаны на совпадениях в публичных сообщениях и не являются полным каталогом.`,{parse_mode:'HTML',disable_web_page_preview:true});
+    } catch(e) { console.error('search:',e?.message||e); await say(chat,'Поиск сейчас недоступен. Проверьте API ID/hash и session string на сервере.'); }
+    return json({ok:true});
+  }
+  return json({ok:true});
+}

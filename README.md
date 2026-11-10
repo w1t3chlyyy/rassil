@@ -1,28 +1,20 @@
-# Telegram Opt-in Campaign Desk
+# Telegram Public Group Finder
 
-MVP: Telegram bot + Mini App (Next.js) + Supabase + cron-job.org. Built-in Vercel Cron is intentionally not configured, so the project can deploy on Vercel Hobby.
+Mini App on Next.js/Vercel plus a Telegram bot. User login for read-only discovery is MTProto (API ID + API hash + QR-generated StringSession); bot UI uses the regular Bot API. There is no sending, joining, folder creation, or campaign scheduling in this project.
 
-## Scope and consent
+## What search does
 
-This project sends only to users who started the bot with `/start`, and to groups whose administrator explicitly enabled publication with `/enable`. It does not search for arbitrary chats, use a personal MTProto/session login, or post to groups without their administrators' opt-in. This avoids building unsolicited mass-messaging automation.
-
-## Features
-
-- Admin sends the source message to the bot; text, formatting and supported media are copied with Telegram `copyMessage`.
-- Mini App selects the saved message, approved audience and schedule.
-- `/start` subscribes; `/stop` unsubscribes. Group admins use `/enable` and `/disable`.
-- Campaign status and delivery counts.
-- Caps: 500 individual subscribers and 50 enabled groups per campaign; up to 12 deliveries per cron request (call once per minute from cron-job.org).
-- Mini App authentication verifies Telegram `initData` and checks the configured admin ID allowlist.
+`/search <topic>` and the Mini App call Telegram MTProto `messages.searchGlobal` with `groups_only=true`. This is a global **message** search: it finds public groups where public messages match the query, then returns up to 10 individual `https://t.me/<username>` links. It is not a semantic catalog, may be incomplete, and does not return private groups or create `t.me/addlist` folder links. The authenticated account is not asked to join any result.
 
 ## Setup
 
-1. Create a bot via `@BotFather`; note its token and the admin's numeric Telegram ID.
-2. Create a Supabase project and run `supabase/schema.sql` in SQL Editor.
-3. Copy `.env.example` to `.env.local` and fill in all secrets. Keep `SUPABASE_SERVICE_ROLE_KEY` server-side only.
-4. Install and run locally: `npm install && npm run dev`.
-5. Deploy to Vercel and add the environment variables from `.env.example` in Project Settings. Set `CRON_SECRET`; Vercel Cron is not used because Hobby permits only daily schedules.
-6. Register the webhook (replace values):
+1. Create a result bot in `@BotFather` with `/newbot`; configure its Mini App URL after deployment.
+2. Get API ID and API hash at `https://my.telegram.org` (API development tools). Do not send these or the session string in chat.
+3. Copy `.env.example` to `.env.local` and set `TELEGRAM_API_ID` and `TELEGRAM_API_HASH`.
+4. On your own trusted computer, run `npm install` then `npm run auth:qr`. Scan the QR in Telegram: Settings → Devices → Link Desktop Device. If prompted, enter your Telegram 2FA password in the local terminal. Copy the resulting session string into `.env.local` as `TELEGRAM_SESSION_STRING`; never commit it.
+5. Create a Vercel project from the repository. Add `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ADMIN_TELEGRAM_IDS`, `APP_URL`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_SESSION_STRING` as server-side environment variables. Redeploy. Do not prefix the session with `NEXT_PUBLIC_`.
+6. Configure the bot Mini App domain/URL in `@BotFather`. In a private chat send `/panel` and open the app.
+7. Set the webhook once (replace the values):
 
 ```bash
 curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
@@ -31,18 +23,13 @@ curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 ```
 
 The webhook `secret_token` must equal `TELEGRAM_WEBHOOK_SECRET`.
-7. In cron-job.org create a job: URL `https://your-project.vercel.app/api/cron`, method `GET`, schedule once per minute, request header `Authorization: Bearer <CRON_SECRET>`. Keep the job enabled; the endpoint verifies this secret.
-8. Configure the Mini App URL in `@BotFather` as `https://your-project.vercel.app`. Start a private chat with the bot and send `/panel`.
-9. Users subscribe with `/start`. Add the bot to your own group; one of its admins sends `/enable` to approve the group.
 
-## Environment variables
+## Commands
 
-- `TELEGRAM_BOT_TOKEN`: bot token.
-- `TELEGRAM_WEBHOOK_SECRET`: random webhook secret (Telegram accepts 1–256 chars from A-Z, a-z, 0-9, `_`, `-`).
-- `ADMIN_TELEGRAM_IDS`: comma-separated Telegram numeric IDs allowed to manage campaigns.
-- `APP_URL`: deployed Mini App URL.
-- `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL.
-- `SUPABASE_SERVICE_ROLE_KEY`: server-only Supabase key.
-- `CRON_SECRET`: long random secret for the scheduled endpoint.
+- `/start` or `/help` — explain use.
+- `/panel` — open the Mini App (allowlisted admin only).
+- `/search предприниматели` — search and return up to 10 public group links (allowlisted admin only).
 
-Review Telegram rules, applicable messaging/privacy law, Vercel function limits, cron-job.org limits, and Supabase quotas before production use.
+Set `ADMIN_TELEGRAM_IDS` to the Telegram numeric ID(s) authorized to search. `TELEGRAM_SESSION_STRING` grants access to the logged-in Telegram account: keep it private, store only in Vercel server-side environment settings, and revoke the session from Telegram → Settings → Devices if exposed. Consider using a dedicated account.
+
+No Supabase or cron is needed for this read-only finder. Telegram may throttle global searches; use short topical queries and avoid repeated rapid requests.
